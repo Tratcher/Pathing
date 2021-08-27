@@ -133,7 +133,7 @@ namespace Pathing
         }
 
         // See https://github.com/dotnet/aspnetcore/blob/52de4ad8f1f635b3c97313d30eeb092567d6ad76/src/Shared/UrlDecoder/UrlDecoder.cs#L18
-        public static int DecodeInPlace(Span<char> buffer)
+        private static int DecodeInPlace(Span<char> buffer)
         {
             // the slot to read the input
             var sourceIndex = 0;
@@ -179,7 +179,7 @@ namespace Pathing
 
         // https://github.com/dotnet/aspnetcore/blob/8b30d862de6c9146f466061d51aa3f1414ee2337/src/Servers/Kestrel/Core/src/Internal/Http/PathNormalizer.cs#L54
         // Removes "/.", "/..", and empty segments "//"
-        public static int RemoveDotSegments(Span<char> buffer)
+        private static int RemoveDotSegments(Span<char> buffer)
         {
             if (!ContainsDotSegments(buffer))
             {
@@ -322,7 +322,7 @@ namespace Pathing
         }
 
         // '/.', '/./' '/..', '/../', '//'
-        public static bool ContainsDotSegments(Span<char> buffer)
+        private static bool ContainsDotSegments(Span<char> buffer)
         {
             var src = 0;
             while (src < buffer.Length)
