@@ -6,9 +6,11 @@ namespace Pathing
 {
     public class PathDecoder
     {
-        // takes the raw target from the http request, extracts the path, and normalize it.
-        // A) Un-escape %2F '/' and %2E '.'
-        // B) Remove dot segments
+        // Takes the raw target from the http request, extracts the path, and normalizes it in this order to match Http.Sys behavior:
+        // A) Un-escape %2F '/', %5C '\', and %2E '.'
+        // B) Converts '\' to '/'
+        // C) Removes consecutive slashes '//'
+        // D) Remove dot segments '/.' and '/..'
         // Compare to https://github.com/dotnet/aspnetcore/blob/52de4ad8f1f635b3c97313d30eeb092567d6ad76/src/Servers/Kestrel/Core/src/Internal/Http/Http1Connection.cs#L259
         public static string GetPathFromRawTarget(string rawTarget)
         {
@@ -87,14 +89,13 @@ namespace Pathing
                 return input;
             }
 
-            bool modified = false;
-
             var dotOffset = input.IndexOf('.');
             var percentOffset = input.IndexOf('%');
             var queryOffset = input.IndexOf('?');
             var doubleSlash = input.IndexOf("//");
+            var backslash = input.IndexOf('\\');
             // Nothing to decode.
-            if (dotOffset < 0 && percentOffset < 0 && queryOffset < 0 && doubleSlash < 0)
+            if (dotOffset < 0 && percentOffset < 0 && queryOffset < 0 && doubleSlash < 0 && backslash < 0)
             {
                 return input;
             }
@@ -104,7 +105,6 @@ namespace Pathing
             // Remove the query
             if (queryOffset >= 0)
             {
-                modified = true;
                 path = path.Slice(0, queryOffset);
             }
 
@@ -112,7 +112,6 @@ namespace Pathing
             var newLength = DecodeInPlace(path);
             if (newLength < path.Length)
             {
-                modified = true;
                 path = path.Slice(0, newLength);
             }
 
@@ -120,13 +119,7 @@ namespace Pathing
             newLength = RemoveDotSegments(path);
             if (newLength < path.Length)
             {
-                modified = true;
                 path = path.Slice(0, newLength);
-            }
-
-            if (!modified)
-            {
-                return input;
             }
 
             return path.ToString();
@@ -148,18 +141,31 @@ namespace Pathing
                     break;
                 }
 
-                // We only care aboute two cases, %2E '.' and %2F '/', case insensitive.
-                if (sourceIndex <= buffer.Length - 3 && buffer[sourceIndex] == '%'
-                    && buffer[sourceIndex + 1] == '2')
+                // We only care aboute three cases, %2E '.', and %2F '/', and %5C '\' case insensitive.
+                if (sourceIndex <= buffer.Length - 3 && buffer[sourceIndex] == '%')
                 {
                     var hex = buffer[sourceIndex + 2];
-                    if (hex == 'e' || hex == 'E')
+                    if (buffer[sourceIndex + 1] == '2')
                     {
-                        buffer[destinationIndex++] = '.';
-                        sourceIndex += 3;
+                        if (hex == 'e' || hex == 'E')
+                        {
+                            buffer[destinationIndex++] = '.';
+                            sourceIndex += 3;
+                        }
+                        else if (hex == 'f' || hex == 'F')
+                        {
+                            buffer[destinationIndex++] = '/';
+                            sourceIndex += 3;
+                        }
+                        else
+                        {
+                            buffer[destinationIndex++] = buffer[sourceIndex++];
+                        }
                     }
-                    else if (hex == 'f' || hex == 'F')
+                    else if (buffer[sourceIndex + 1] == '5'
+                        && (hex == 'c' || hex == 'C'))
                     {
+                        // Decode '\' directly to '/'
                         buffer[destinationIndex++] = '/';
                         sourceIndex += 3;
                     }
@@ -167,6 +173,11 @@ namespace Pathing
                     {
                         buffer[destinationIndex++] = buffer[sourceIndex++];
                     }
+                }
+                else if (buffer[sourceIndex] == '\\')
+                {
+                    sourceIndex++;
+                    buffer[destinationIndex++] = '/';
                 }
                 else
                 {
